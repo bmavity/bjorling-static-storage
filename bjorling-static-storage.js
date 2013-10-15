@@ -1,6 +1,5 @@
-var path = require('path')
-	, allStatic = {}
-	, dataDir
+var allStatic = {}
+	, loader
 
 function BjorlingStaticStorage(items, projectionName, key) {
 	this._items = items
@@ -44,32 +43,39 @@ BjorlingStaticStorage.prototype.get = function(queryObj, cb) {
 	return result
 }
 
-function getStorage(dir) {
-	dataDir = dir
+function getStorage(opts) {
+	loader = opts.loader
 	return getStatic
 }
 
 function getStatic(projectionName, key, cb) {
 	var projection = allStatic[projectionName]
+		, items
+
 	if(!projection) {
-		var items = require(path.join(dataDir, projectionName))
+		items = {}
 		projection = allStatic[projectionName] = new BjorlingStaticStorage(items, projectionName, key)
+		loader(projectionName, function(err, result) {
+			if(err) return cb && cb(err)
+			Object.keys(result).forEach(function(key) {
+				items[key] = result[key]
+			})
+			var indexName = Object.keys(projection._indexes)[0]
+			projection.addIndex(indexName)
+			cb && cb(null, projection)
+		})
+	} else {
+		setImmediate(function() {
+			cb && cb(null, projection)
+		})
 	}
 
-	setImmediate(function() {
-		cb && cb(null, projection)
-	})
 	return projection
 }
 
 function get(projectionName, keyVal) {
 	var projection = allStatic[projectionName]
-	if(!projection) {
-		require(path.join(__dirname, projectionName))
-		projection = allStatic[projectionName]
-	}
-
-	var queryObj = {}
+		, queryObj = {}
 	queryObj[projection._key] = keyVal
 	return projection.get(queryObj)
 }
